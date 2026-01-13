@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Django Webcam Stream</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; }
+    .wrap { max-width: 1080px; }
+    img { width: 100%; max-width: 900px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.15); }
+    .hint { color: #666; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Webcam Stream (OpenCV → Django → HTML)</h1>
+    <img src="{% url 'video_feed' %}" alt="webcam stream" />
+    <div class="hint">MJPEG 스트림으로 전송 중</div>
+  </div>
+</body>
+</html>

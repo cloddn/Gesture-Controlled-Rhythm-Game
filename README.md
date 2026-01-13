@@ -81,6 +81,10 @@ pip freeze > requirements.txt
 deactivate
 ```
 
+### 새로운 앱과 URL 페이지를 추가한 경우
+새로운 기능과 URL페이지를 추가한 경우 아래에 예시와 같은 형식으로 추가해주시면 감사하겠습니다.
+ai 친구들에게 쟝고로 하고 있고, 기능추가하고 싶다라고 이야기하면 어떤 파일에 어떤 컴포넌트를 추가해야하는지 잘 이야기해 줍니다.
+
 ---
 
 ## 🎮 사용 방법 (How to Use)
@@ -89,6 +93,12 @@ deactivate
 
 https://velog.io/@dltmdgus9661/series/Django
 ---
+
+## 현재 존재하는 url page
+
+http://127.0.0.1:8000/ #mainpage
+http://127.0.0.1:8000/video_feed #video streaming
+
 
 ## 📌 Notes
 - 협업 시 `requirements.txt` 동기화를 꼭 확인해주세요.
