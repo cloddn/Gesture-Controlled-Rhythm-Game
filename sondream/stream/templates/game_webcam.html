@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Webcam Rhythm Game</title>
+    <!-- MediaPipe 라이브러리 로드 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background-color: #222; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; }
+        .container { position: relative; width: 640px; height: 480px; margin-top: 20px; border: 3px solid #444; border-radius: 10px; overflow: hidden; background: #000; }
+        
+        #input_video { display: none; }
+        #output_canvas { width: 100%; height: 100%; transform: scaleX(-1); /* 거울 모드 */ }
+        
+        #ui-layer { position: absolute; top: 15px; left: 15px; z-index: 10; text-shadow: 2px 2px 2px black; pointer-events: none; }
+        .info-label { font-size: 14px; color: #aaa; margin-bottom: 2px; margin-top: 10px; }
+        .info-label:first-child { margin-top: 0; }
+        .info-value { font-size: 20px; font-weight: bold; margin-bottom: 5px; transition: color 0.2s; }
+        .score-value { font-size: 32px; font-weight: bold; color: #00ff00; }
+        
+        /* 콤보 애니메이션 (팝핑 효과) */
+        .pop-anim {
+            animation: pop 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.5); color: #fff; }
+            100% { transform: scale(1); }
+        }
+
+        /* [NEW] 피버 게이지 스타일 */
+        #fever-container {
+            width: 150px;
+            height: 12px;
+            background: #333;
+            border: 2px solid #666;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 5px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        #fever-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #ffaa00, #ffff00);
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* 피버 발동 모드 (반짝임) */
+        .fever-active-mode #fever-bar {
+            background: linear-gradient(90deg, #00c6ff, #0072ff);
+            box-shadow: 0 0 15px #00c6ff;
+            animation: pulse-fever 0.5s infinite alternate;
+        }
+        .fever-active-text {
+            color: #00c6ff !important;
+            text-shadow: 0 0 10px #00c6ff !important;
+            animation: pulse-text 0.5s infinite alternate;
+        }
+
+        @keyframes pulse-fever {
+            from { opacity: 0.8; }
+            to { opacity: 1.0; box-shadow: 0 0 20px #00c6ff; }
+        }
+        @keyframes pulse-text {
+            from { transform: scale(1); }
+            to { transform: scale(1.1); }
+        }
+
+        /* 통계 표시용 스타일 (우측 상단) */
+        #stats-layer { position: absolute; top: 15px; right: 15px; z-index: 10; text-align: right; text-shadow: 2px 2px 2px black; pointer-events: none; }
+        .stat-item { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+        .stat-perfect { color: #00ffff; }
+        .stat-great { color: #00ff00; }
+        .stat-good { color: #ffff00; }
+        .stat-bad { color: #ff0000; }
+
+        /* 중앙 판정 텍스트 (Perfect, Great 등) */
+        .judgement-text { 
+            position: absolute; top: 40%; left: 50%; 
+            transform: translate(-50%, -50%) scaleX(-1); /* 텍스트 거울모드 방지용 역반전 */
+            font-size: 60px; font-weight: 900; 
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            display: none; 
+            z-index: 20;
+        }
+        
+        /* 텍스트가 거울모드(scaleX(-1)) 된 캔버스 위에 있어서 뒤집히는 것을 방지하기 위한 컨테이너 */
+        #text-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h2 style="margin-top: 10px;">Gesture Rhythm Game</h2>
+    
+    <div class="container">
+        <video id="input_video"></video>
+        <canvas id="output_canvas" width="640" height="480"></canvas>
+        
+        <div id="text-container">
+            <!-- 좌측 정보 (타이머, 콤보, 점수, 랭크, 피버) -->
+            <div id="ui-layer">
+                <div class="info-label">NEXT TARGET</div>
+                <div class="info-value" id="target-timer">Waiting...</div>
+                
+                <div class="info-label">COMBO</div>
+                <div class="info-value" id="combo" style="color: yellow;">0</div>
+                
+                <div class="info-label">SCORE</div>
+                <div class="score-value" id="score">0</div>
+
+                <div class="info-label">RANK</div>
+                <div class="info-value" id="rank">-</div>
+
+                <!-- [NEW] 피버 게이지 -->
+                <div class="info-label" id="fever-label">FEVER</div>
+                <div id="fever-container">
+                    <div id="fever-bar"></div>
+                </div>
+            </div>
+
+            <!-- 우측 정보 (판정 통계) -->
+            <div id="stats-layer">
+                <div class="stat-item stat-perfect">PERFECT: <span id="cnt-perfect">0</span></div>
+                <div class="stat-item stat-great">GREAT: <span id="cnt-great">0</span></div>
+                <div class="stat-item stat-good">GOOD: <span id="cnt-good">0</span></div>
+                <div class="stat-item stat-bad">BAD: <span id="cnt-bad">0</span></div>
+            </div>
+            
+            <!-- 중앙 판정 이펙트 -->
+            <div id="judgement-display" class="judgement-text">PERFECT</div>
+        </div>
+    </div>
+
+    <script>
+        // ---------------------------------------------------------
+        // 1. 초기 설정
+        // ---------------------------------------------------------
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        
+        // WebSocket 연결
+        const socket = new WebSocket('ws://' + window.location.host + '/ws/stream/');
+
+        // 게임 상태 변수
+        let targetStart = 0;
+        let targetEnd = 0;
+        
+        let isHandInside = false;
+        let entryTime = 0;
+        let exitTime = 0;
+        let minDistanceInGesture = 9999;
+        
+        // 타겟 위치 및 크기 (랜덤 변경됨)
+        let targetX = 320; 
+        let targetY = 240; 
+        const TARGET_RADIUS = 60; 
+        const APPROACH_TIME = 2000; // 어프로치 서클이 보이는 시간 (ms)
+
+        // 판정 통계 저장용
+        let stats = {
+            PERFECT: 0,
+            GREAT: 0,
+            GOOD: 0,
+            BAD: 0
+        };
+
+        // ---------------------------------------------------------
+        // 2. WebSocket 이벤트 핸들링
+        // ---------------------------------------------------------
+        socket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+
+            // 다음 목표 수신
+            if (data.type === 'system' || data.type === 'next_target') {
+                targetStart = data.target_start;
+                targetEnd = data.target_end;
+                setRandomPosition(); // 위치 랜덤 변경
+            }
+            
+            // 결과 수신
+            if (data.type === 'result') {
+                showResult(data.data);
+            }
+        };
+
+        // 타겟 위치 랜덤 설정 함수
+        function setRandomPosition() {
+            const padding = TARGET_RADIUS + 30; // 화면 밖으로 나가지 않게 여백
+            const maxX = 640 - padding;
+            const maxY = 480 - padding;
+            const minX = padding;
+            const minY = padding;
+
+            targetX = Math.random() * (maxX - minX) + minX;
+            targetY = Math.random() * (maxY - minY) + minY;
+        }
+
+        // 결과 표시 및 애니메이션 함수
+        function showResult(res) {
+            // 점수 및 랭크 갱신
+            document.getElementById('score').innerText = res.total_score;
+            document.getElementById('rank').innerText = res.rank;
+            
+            // 콤보 업데이트 & 팝업 애니메이션
+            const comboEl = document.getElementById('combo');
+            comboEl.innerText = res.combo;
+            
+            comboEl.classList.remove('pop-anim');
+            void comboEl.offsetWidth; 
+            
+            if (res.combo > 0) {
+                comboEl.style.color = 'yellow'; 
+                comboEl.classList.add('pop-anim');
+            } else {
+                comboEl.style.color = '#aaa'; 
+            }
+
+            // [NEW] 피버 게이지 업데이트
+            const feverBar = document.getElementById('fever-bar');
+            const feverContainer = document.getElementById('fever-container');
+            const feverLabel = document.getElementById('fever-label');
+
+            let widthPct = 0;
+
+            if (res.fever_active) {
+                // 피버 발동 중일 때: 남은 시간에 비례해서 게이지가 줄어듦
+                // (fever_active_notes / fever_duration) * 100
+                widthPct = (res.fever_active_notes / res.fever_duration) * 100;
+                
+                // 스타일 적용 (파란색 네온)
+                feverContainer.classList.add('fever-active-mode');
+                feverLabel.classList.add('fever-active-text');
+                feverLabel.innerText = "FEVER TIME!";
+            } else {
+                // 일반 모드: 게이지 충전량
+                // (fever_gauge / fever_max) * 100
+                widthPct = (res.fever_gauge / res.fever_max) * 100;
+                
+                // 스타일 해제 (노란색/주황색)
+                feverContainer.classList.remove('fever-active-mode');
+                feverLabel.classList.remove('fever-active-text');
+                feverLabel.innerText = "FEVER";
+            }
+            
+            feverBar.style.width = widthPct + "%";
+
+
+            // 통계 카운트 증가
+            if (stats.hasOwnProperty(res.judgement)) {
+                stats[res.judgement]++;
+                document.getElementById(`cnt-${res.judgement.toLowerCase()}`).innerText = stats[res.judgement];
+            }
+
+            // 중앙 판정 텍스트 표시
+            const jDiv = document.getElementById('judgement-display');
+            jDiv.innerText = res.judgement;
+            
+            let color = '#fff';
+            if (res.judgement === 'PERFECT') color = '#00ffff'; 
+            else if (res.judgement === 'GREAT') color = '#00ff00'; 
+            else if (res.judgement === 'GOOD') color = '#ffff00'; 
+            else if (res.judgement === 'BAD') color = '#ff0000'; 
+            
+            jDiv.style.color = color;
+            jDiv.style.textShadow = `0 0 20px ${color}`;
+            jDiv.style.display = 'block';
+            
+            // 텍스트 등장 애니메이션
+            jDiv.style.transition = 'none';
+            jDiv.style.transform = 'translate(-50%, -50%) scale(0.5)';
+            
+            requestAnimationFrame(() => {
+                jDiv.style.transition = 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.5s';
+                jDiv.style.transform = 'translate(-50%, -50%) scale(1.2)';
+                jDiv.style.opacity = '1';
+                
+                setTimeout(() => {
+                    jDiv.style.opacity = '0';
+                    setTimeout(() => { jDiv.style.display = 'none'; }, 500);
+                }, 500);
+            });
+        }
+
+        // ---------------------------------------------------------
+        // 3. MediaPipe & Rendering 루프
+        // ---------------------------------------------------------
+        function onResults(results) {
+            // 캔버스 초기화 및 비디오 그리기
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            const currentTime = Date.now();
+            const timeToHit = targetStart - currentTime;
+
+            // --- [1] 타겟 원 그리기 ---
+            canvasCtx.beginPath();
+            canvasCtx.arc(targetX, targetY, TARGET_RADIUS, 0, 2 * Math.PI);
+            canvasCtx.lineWidth = 4;
+            
+            if (isHandInside) {
+                canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                canvasCtx.fill();
+                canvasCtx.strokeStyle = '#00ff00';
+            } else {
+                canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.2)'; 
+                canvasCtx.fill();
+            }
+            canvasCtx.stroke();
+
+            // --- [2] 어프로치 서클 그리기 (타이밍 시각화) ---
+            if (timeToHit > 0 && timeToHit <= APPROACH_TIME) {
+                const progress = 1 - (timeToHit / APPROACH_TIME);
+                const startScale = 2.5; // 시작 크기 배율
+                const currentRadius = TARGET_RADIUS * (1 + (startScale - 1) * (1 - progress));
+                
+                canvasCtx.beginPath();
+                canvasCtx.arc(targetX, targetY, currentRadius, 0, 2 * Math.PI);
+                canvasCtx.lineWidth = 3;
+                canvasCtx.strokeStyle = `rgba(0, 255, 255, ${0.5 + progress * 0.5})`; // 투명도 조절
+                canvasCtx.stroke();
+            }
+
+            // --- [3] 타이머 텍스트 갱신 ---
+            if (timeToHit > 0) {
+                document.getElementById('target-timer').innerText = (timeToHit / 1000).toFixed(2) + "s";
+            } else if (timeToHit > -1000) {
+                 document.getElementById('target-timer').innerText = "NOW!";
+            } else {
+                document.getElementById('target-timer').innerText = "Waiting...";
+            }
+
+            // --- [4] 손 인식 및 충돌 처리 ---
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const indexFinger = landmarks[8]; // 검지 손가락 끝
+                
+                // 좌표 변환 (0~1 -> 픽셀)
+                const fingerX = indexFinger.x * canvasElement.width;
+                const fingerY = indexFinger.y * canvasElement.height;
+
+                // 거리 계산
+                const distance = Math.sqrt(Math.pow(fingerX - targetX, 2) + Math.pow(fingerY - targetY, 2));
+
+                // 손 위치 커서
+                canvasCtx.beginPath();
+                canvasCtx.arc(fingerX, fingerY, 8, 0, 2 * Math.PI);
+                canvasCtx.fillStyle = '#ff0055'; 
+                canvasCtx.fill();
+                canvasCtx.strokeStyle = 'white';
+                canvasCtx.lineWidth = 2;
+                canvasCtx.stroke();
+
+                const currentlyInside = distance <= TARGET_RADIUS;
+
+                if (currentlyInside) {
+                    minDistanceInGesture = Math.min(minDistanceInGesture, distance);
+                    if (!isHandInside) {
+                        isHandInside = true;
+                        entryTime = Date.now();
+                        // 진입 시 효과음이나 시각 효과를 여기에 추가 가능
+                    }
+                } else {
+                    if (isHandInside) {
+                        // 손이 나가는 순간 -> 데이터 전송
+                        isHandInside = false;
+                        exitTime = Date.now();
+                        
+                        socket.send(JSON.stringify({
+                            'action': 'gesture_complete',
+                            'entry_time': entryTime,
+                            'exit_time': exitTime,
+                            'min_dist': minDistanceInGesture
+                        }));
+                        minDistanceInGesture = 9999;
+                    }
+                }
+            }
+            canvasCtx.restore();
+        }
+
+        // MediaPipe 초기화
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+
+    </script>
+</body>
+</html>

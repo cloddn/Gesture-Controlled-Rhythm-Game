@@ -36,3 +36,7 @@ def video_feed(request):
         frame_generator(),
         content_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+def game_page(request):
+    # templates 폴더 안에 있는 game_webcam.html을 찾아서 보여줍니다.
+    return render(request, 'game_webcam.html')
