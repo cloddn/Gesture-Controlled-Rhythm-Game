@@ -716,21 +716,37 @@
             const currentTime = Date.now();
             const timeToHit = targetStart - currentTime;
 
-            // --- [1] 타겟 원 그리기 ---
+            // --- [1] 타겟 원 그리기 (Neon Line Style) ---
+            canvasCtx.save();
             canvasCtx.beginPath();
             canvasCtx.arc(targetX, targetY, TARGET_RADIUS, 0, 2 * Math.PI);
-            canvasCtx.lineWidth = 4;
 
             if (isHandInside) {
-                canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.3)';
-                canvasCtx.fill();
+                // 손이 들어왔을 때: Green Glow + Thick Line
+                canvasCtx.shadowBlur = 20;
+                canvasCtx.shadowColor = '#00ff00';
+                canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
                 canvasCtx.strokeStyle = '#00ff00';
+                canvasCtx.lineWidth = 5;
             } else {
-                canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-                canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-                canvasCtx.fill();
+                // 기본 상태: Cyan Neon + Sharp Line
+                canvasCtx.shadowBlur = 15;
+                canvasCtx.shadowColor = '#00ffff';
+                canvasCtx.fillStyle = 'rgba(0, 20, 40, 0.3)'; // 약간 어두운 반투명 배경
+                canvasCtx.strokeStyle = '#00ffff';
+                canvasCtx.lineWidth = 3;
             }
+
+            canvasCtx.fill();
             canvasCtx.stroke();
+
+            // 내부 디테일 라인 (선명한 흰색 실선)
+            canvasCtx.shadowBlur = 0;
+            canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            canvasCtx.lineWidth = 1;
+            canvasCtx.stroke();
+
+            canvasCtx.restore();
 
             // --- [2] 어프로치 서클 그리기 (타이밍 시각화) ---
             if (timeToHit > 0 && timeToHit <= APPROACH_TIME) {
